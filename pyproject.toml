@@ -1,0 +1,35 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "purple-titanium"
+version = "0.1.0"
+description = "Pipeline framework for task-based data processing workflows."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Gal Vinograd", email = "gal.vinograd@gmail.com" }
+]
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/purple_titanium"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+select = ["E", "F", "B", "I", "N", "UP", "ANN", "S", "A", "C4", "T20", "PT", "RET", "SIM"]
+ignore = ["ANN101", "ANN102", "ANN401"]
+
+[tool.ruff.isort]
+known-first-party = ["purple_titanium"]
+
+[tool.ruff.flake8-annotations]
+allow-star-arg-any = true
+suppress-dummy-args = true
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py" 

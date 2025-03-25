@@ -1,0 +1,38 @@
+# Ruff configuration
+
+line-length = 120
+
+[lint]
+ignore = []
+select = [
+    "E", # pycodestyle errors
+    "F", # pyflakes
+    "B", # flake8-bugbear
+    "I", # isort
+    "N", # pep8-naming
+    "UP", # pyupgrade
+    "ANN", # flake8-annotations
+    "S", # flake8-bandit
+    "A", # flake8-builtins
+    "C4", # flake8-comprehensions
+    "T20", # flake8-print
+    "PT", # flake8-pytest-style
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+]
+
+[lint.per-file-ignores]
+"tests/*.py" = ["S101"]  # Allow assertions in tests
+
+[lint.isort]
+known-first-party = ["src"]
+
+[lint.flake8-annotations]
+allow-star-arg-any = true
+suppress-dummy-args = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = 88
