@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "purple-titanium"
-version = "0.1.0"
+version = "0.1.1"
 description = "Pipeline framework for task-based data processing workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,6 +16,12 @@ dependencies = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/purple_titanium"]
+include-package-data = true
+
+[tool.hatch.build]
+include = [
+    "assets/**/*.png",
+]
 
 [tool.ruff]
 target-version = "py310"

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Purple Titanium Logo" width="100"/>
+  <img src="https://raw.githubusercontent.com/galvinograd/purple-titanium/main/assets/logo.png" alt="Purple Titanium Logo" width="100"/>
 </p>
 
 # Purple Titanium
