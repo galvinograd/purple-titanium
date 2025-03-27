@@ -1,11 +1,17 @@
+"""Core task and output classes."""
+
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
 
+from .context import Context, get_current_context
 from .events import Event, emit
 from .types import EventType, TaskStatus
+
+if TYPE_CHECKING:
+    from .core import Task
 
 T = TypeVar('T')
 
@@ -22,17 +28,17 @@ _task_context = _TaskContext()
 
 @contextmanager
 def task_context() -> Iterator[None]:
-    """Context manager to track when we're inside a task execution."""
-    prev = _task_context.in_task
+    """Context manager for task execution."""
+    old_in_task = getattr(_task_context, 'in_task', False)
     _task_context.in_task = True
     try:
         yield
     finally:
-        _task_context.in_task = prev
+        _task_context.in_task = old_in_task
 
 @contextmanager
 def _dependency_resolution_context() -> Iterator[None]:
-    """Context manager for tracking dependency resolution."""
+    """Context manager for dependency resolution."""
     old_resolving_deps = getattr(_task_context, 'resolving_deps', False)
     _task_context.resolving_deps = True
     try:
@@ -46,6 +52,7 @@ class TaskState:
     status: TaskStatus = TaskStatus.PENDING
     exception: Exception | None = None
     output: Optional['LazyOutput'] = None
+    dependencies: set['Task'] = field(default_factory=set)
 
 @dataclass(frozen=True)
 class Task:
@@ -54,8 +61,8 @@ class Task:
     func: Callable
     args: tuple = field(default_factory=tuple)
     kwargs: dict = field(default_factory=dict)
-    dependencies: set['Task'] = field(default_factory=set)
     _state: TaskState = field(default_factory=TaskState)
+    context: Context = field(default_factory=get_current_context)
 
     def __post_init__(self) -> None:
         """Initialize the output after the task is created."""
@@ -85,7 +92,24 @@ class Task:
     def output(self) -> 'LazyOutput':
         return self._state.output
 
-    
+    @property
+    def dependencies(self) -> set['Task']:
+        return self._state.dependencies
+
+    @classmethod
+    def create(
+        cls, 
+        name: str, 
+        func: Callable, 
+        args: tuple = (), 
+        kwargs: dict = None, 
+        dependencies: set['Task'] = None
+    ) -> 'Task':
+        """Create a new task with the given parameters."""
+        task = cls(name, func, args, kwargs or {})
+        task._state.dependencies = dependencies or set()
+        return task
+
     def resolve(self) -> Any:  # noqa: ANN401
         """Resolve this task by executing it and its dependencies."""
         if self.status is TaskStatus.COMPLETED:
@@ -133,8 +157,8 @@ class Task:
                             raise
                         resolved_kwargs[key] = None  # Allow the task to handle the error
 
-            # Execute the task function with task context
-            with task_context():
+            # Execute the task function with the task's captured context
+            with task_context(), self.context:
                 result = self.func(*resolved_args, **resolved_kwargs)
 
             # Update status and output

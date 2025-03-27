@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "purple-titanium"
-version = "0.1.1"
+version = "0.1.2"
 description = "Pipeline framework for task-based data processing workflows."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,15 @@ authors = [
     { name = "Gal Vinograd", email = "gal.vinograd@gmail.com" }
 ]
 dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "ruff>=0.1.6",
+    "hatchling>=1.18.0",
+    "build>=1.0.0",
+    "twine>=6.1.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/purple_titanium"]

@@ -1,3 +1,0 @@
-pytest>=7.4.0
-ruff>=0.1.6
-hatchling>=1.18.0 

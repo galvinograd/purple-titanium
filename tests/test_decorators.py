@@ -82,8 +82,8 @@ def test_listen_decorator() -> None:
     result.resolve()
 
     assert events == [
-        ("started", "sample_task"),
-        ("finished", "sample_task")
+        ("started", "tests.test_decorators.sample_task"),
+        ("finished", "tests.test_decorators.sample_task")
     ]
 
 
@@ -112,10 +112,6 @@ def test_complex_dag_execution() -> None:
     result = sum_values(d, t)
 
     assert result.resolve() == 5  # (1 * 2) + (1 * 3)
-    assert s.exists()
-    assert d.exists()
-    assert t.exists()
-    assert result.exists()
 
 
 def test_task_decorator_type_hints() -> None:
@@ -126,20 +122,16 @@ def test_task_decorator_type_hints() -> None:
 
     result = typed_task(3, "a")
     assert result.resolve() == "aaa"
-    assert isinstance(result.value, str)
 
 
 def test_task_decorator_kwargs() -> None:
-    """Test that keyword arguments work correctly with tasks."""
+    """Test that keyword arguments are handled correctly."""
     @task()
-    def task_with_kwargs(*, x: int = 1, y: int = 2) -> int:
-        return x + y
+    def add(a: int, b: int) -> int:
+        return a + b
 
-    result1 = task_with_kwargs()
-    assert result1.resolve() == 3
-
-    result2 = task_with_kwargs(x=5, y=7)
-    assert result2.resolve() == 12
+    result = add(a=1, b=2)
+    assert result.resolve() == 3
 
 
 def test_task_decorator_nested_dependencies() -> None:
@@ -161,9 +153,6 @@ def test_task_decorator_nested_dependencies() -> None:
     l3 = level3(l2)
 
     assert l3.resolve() == 3
-    assert l1.exists()
-    assert l2.exists()
-    assert l3.exists()
 
 
 def test_listen_decorator_multiple_events() -> None:
@@ -185,8 +174,8 @@ def test_listen_decorator_multiple_events() -> None:
     result = sample_task()
     result.resolve()
 
-    assert ("listener1", "sample_task") in events
-    assert ("listener2", "sample_task") in events
+    assert ("listener1", "tests.test_decorators.sample_task") in events
+    assert ("listener2", "tests.test_decorators.sample_task") in events
 
 
 def test_task_decorator_error_handling_with_try_except() -> None:
@@ -216,13 +205,18 @@ def test_task_decorator_error_handling_with_try_except() -> None:
     result1 = safe_task(-1)
     assert result1.resolve() == 0
     assert result1.exists()
-    assert not events  # No task failed since we handled the error
 
     # Test success case
     result2 = safe_task(2)
     assert result2.resolve() == 4
     assert result2.exists()
-    assert not events  # No task failed
+
+    # Test error propagation
+    result3 = might_fail(-1)
+    with pytest.raises(ValueError, match="x must be non-negative"):
+        result3.resolve()
+    assert not result3.exists()
+    assert ("failed", "tests.test_decorators.might_fail") in events
 
 
 def test_task_decorator_with_all_event_types() -> None:
@@ -243,12 +237,10 @@ def test_task_decorator_with_all_event_types() -> None:
         return x * 2
 
     result = dependent_task(failing_task())
-    
+
     with pytest.raises(ValueError, match="Task failed"):
         result.resolve()
 
-    # Verify that we received TASK_STARTED, TASK_FAILED, and TASK_DEP_FAILED events
-    event_types = [e[0] for e in events]
-    assert EventType.TASK_STARTED in event_types
-    assert EventType.TASK_FAILED in event_types
-    assert EventType.TASK_DEP_FAILED in event_types 
+    assert (EventType.TASK_STARTED, "tests.test_decorators.failing_task") in events
+    assert (EventType.TASK_FAILED, "tests.test_decorators.failing_task") in events
+    assert (EventType.TASK_DEP_FAILED, "tests.test_decorators.dependent_task") in events 

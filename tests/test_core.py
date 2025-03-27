@@ -1,3 +1,5 @@
+"""Tests for core task functionality."""
+
 import pytest
 
 from purple_titanium import Event, EventType, LazyOutput, Task, TaskStatus, listen
@@ -7,11 +9,10 @@ def test_lazy_output_creation() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task(
+    task = Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
-        kwargs={},
         dependencies=set()
     )
     output = task.output
@@ -21,15 +22,15 @@ def test_lazy_output_creation() -> None:
     assert output.value is None
     assert not output.exists()
 
+
 def test_task_execution() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task(
+    task = Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
-        kwargs={},
         dependencies=set()
     )
     output = task.output
@@ -39,6 +40,7 @@ def test_task_execution() -> None:
     assert output.exists()
     assert task.status == TaskStatus.COMPLETED
 
+
 def test_task_dependencies() -> None:
     def one() -> int:
         return 1
@@ -46,18 +48,16 @@ def test_task_dependencies() -> None:
     def inc(n: int) -> int:
         return n + 1
 
-    task_one = Task(
+    task_one = Task.create(
         name="one",
         func=one,
         args=(),
-        kwargs={},
         dependencies=set()
     )
-    task_inc = Task(
+    task_inc = Task.create(
         name="inc",
         func=inc,
         args=(task_one.output,),
-        kwargs={},
         dependencies={task_one}
     )
 
@@ -65,15 +65,15 @@ def test_task_dependencies() -> None:
     assert task_one.status is TaskStatus.COMPLETED
     assert task_inc.status is TaskStatus.COMPLETED
 
+
 def test_task_error_handling() -> None:
     def failing_func(x: int) -> int:
         raise ValueError("x must be non-negative")
 
-    task = Task(
+    task = Task.create(
         name="failing",
         func=failing_func,
         args=(-1,),
-        kwargs={},
         dependencies=set()
     )
     output = task.output
@@ -84,6 +84,7 @@ def test_task_error_handling() -> None:
     assert task.status is TaskStatus.FAILED
     assert isinstance(task.exception, ValueError)
     assert not output.exists()
+
 
 def test_event_handling() -> None:
     events = []
@@ -99,11 +100,10 @@ def test_event_handling() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task(
+    task = Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
-        kwargs={},
         dependencies=set()
     )
     task.output.resolve()
@@ -113,17 +113,17 @@ def test_event_handling() -> None:
         ("finished", "sample")
     ]
 
+
 def test_task_initialization_rules() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
     def helper(x: int) -> int:
         # This should raise RuntimeError
-        return Task(
+        return Task.create(
             name="nested",
             func=sample_func,
             args=(x,),
-            kwargs={},
             dependencies=set()
         ).output
 
@@ -131,25 +131,24 @@ def test_task_initialization_rules() -> None:
         return helper(x)
 
     # Test that task initialization can be done at top level
-    task = Task(
+    task = Task.create(
         name="valid",
         func=sample_func,
         args=(5,),
-        kwargs={},
         dependencies=set()
     )
     assert task.output.resolve() == 10
 
     # Test that task initialization cannot be done inside a task
-    invalid_task = Task(
+    invalid_task = Task.create(
         name="invalid",
         func=invalid_task,
         args=(5,),
-        kwargs={},
         dependencies=set()
     )
     with pytest.raises(RuntimeError, match="task\\(\\) cannot be called inside a task"):
         invalid_task.output.resolve()
+
 
 def test_multiple_resolve_calls() -> None:
     def one() -> int:
@@ -158,18 +157,16 @@ def test_multiple_resolve_calls() -> None:
     def two() -> int:
         return 2
 
-    task_one = Task(
+    task_one = Task.create(
         name="one",
         func=one,
         args=(),
-        kwargs={},
         dependencies=set()
     )
-    task_two = Task(
+    task_two = Task.create(
         name="two",
         func=two,
         args=(),
-        kwargs={},
         dependencies=set()
     )
 
@@ -178,6 +175,7 @@ def test_multiple_resolve_calls() -> None:
     assert task_two.output.resolve() == 2
     assert task_one.status is TaskStatus.COMPLETED
     assert task_two.status is TaskStatus.COMPLETED
+
 
 def test_dependency_resolution_order() -> None:
     def one() -> int:
@@ -189,25 +187,22 @@ def test_dependency_resolution_order() -> None:
     def add(a: int, b: int) -> int:
         return a + b
 
-    task_one = Task(
+    task_one = Task.create(
         name="one",
         func=one,
         args=(),
-        kwargs={},
         dependencies=set()
     )
-    task_two = Task(
+    task_two = Task.create(
         name="two",
         func=inc,
         args=(task_one.output,),
-        kwargs={},
         dependencies={task_one}
     )
-    task_three = Task(
+    task_three = Task.create(
         name="three",
         func=add,
         args=(task_one.output, task_two.output),
-        kwargs={},
         dependencies={task_one, task_two}
     )
 
@@ -217,6 +212,7 @@ def test_dependency_resolution_order() -> None:
     assert task_two.status is TaskStatus.COMPLETED
     assert task_three.status is TaskStatus.COMPLETED
 
+
 def test_error_propagation() -> None:
     def failing_task(x: int) -> int:
         raise ValueError(f"Task failed with input {x}")
@@ -224,18 +220,16 @@ def test_error_propagation() -> None:
     def dependent_task(x: int) -> int:
         return x * 2
 
-    task_one = Task(
+    task_one = Task.create(
         name="failing",
         func=failing_task,
         args=(42,),
-        kwargs={},
         dependencies=set()
     )
-    task_two = Task(
+    task_two = Task.create(
         name="dependent",
         func=dependent_task,
         args=(task_one.output,),
-        kwargs={},
         dependencies={task_one}
     )
 
