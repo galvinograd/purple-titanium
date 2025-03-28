@@ -23,6 +23,7 @@ _task_context.resolving_deps = False
 class _TaskContext:
     def __init__(self) -> None:
         self.in_task = False
+        self.resolving_deps = False
 
 _task_context = _TaskContext()
 
@@ -122,15 +123,20 @@ class Task:
             raise RuntimeError(f"Task {self.name} failed due to dependency failure")
 
         try:
-            # Update status and emit event
+            # Check if this is a root task (not being resolved as a dependency)
+            is_root = not _task_context.resolving_deps
+
+            # Update status and emit events
             self._state.status = TaskStatus.RUNNING
+            if is_root:
+                emit(Event(EventType.ROOT_STARTED, self))
             emit(Event(EventType.TASK_STARTED, self))
 
             # Resolve dependencies first
+            resolved_args = []
+            resolved_kwargs = {}
+            
             with _dependency_resolution_context():
-                resolved_args = []
-                resolved_kwargs = {}
-                
                 # Try to resolve each argument
                 for arg in self.args:
                     try:
@@ -166,17 +172,21 @@ class Task:
             self.output.value = result
             self.output._exists = True
             emit(Event(EventType.TASK_FINISHED, self))
+            if is_root:
+                emit(Event(EventType.ROOT_FINISHED, self))
 
             return result
 
         except Exception as e:
-            # Update status and emit event
+            # Update status and emit events
             if self._state.status not in (TaskStatus.DEP_FAILED, TaskStatus.FAILED):
                 self._state.status = TaskStatus.FAILED
                 self._state.exception = e
                 emit(Event(EventType.TASK_FAILED, self))
+                if not _task_context.resolving_deps:
+                    emit(Event(EventType.ROOT_FAILED, self))
 
-            raise 
+            raise
 
 @dataclass
 class LazyOutput(Generic[T]):

@@ -6,10 +6,14 @@ from typing import Generic, TypeVar
 
 class EventType(Enum):
     """Event types for task execution."""
+    ROOT_STARTED = auto()
+    ROOT_FINISHED = auto()
+    ROOT_FAILED = auto()
     TASK_STARTED = auto()
     TASK_FINISHED = auto()
     TASK_FAILED = auto()
     TASK_DEP_FAILED = auto()
+    INTERNAL_ERROR = auto()
 
 
 class TaskStatus(Enum):

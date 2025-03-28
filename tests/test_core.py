@@ -89,6 +89,18 @@ def test_task_error_handling() -> None:
 def test_event_handling() -> None:
     events = []
     
+    @listen(EventType.ROOT_STARTED)
+    def on_root_started(event: Event) -> None:
+        events.append(("root_started", event.task.name))
+
+    @listen(EventType.ROOT_FINISHED)
+    def on_root_finished(event: Event) -> None:
+        events.append(("root_finished", event.task.name))
+
+    @listen(EventType.ROOT_FAILED)
+    def on_root_failed(event: Event) -> None:
+        events.append(("root_failed", event.task.name))
+
     @listen(EventType.TASK_STARTED)
     def on_task_started(event: Event) -> None:
         events.append(("started", event.task.name))
@@ -109,8 +121,10 @@ def test_event_handling() -> None:
     task.output.resolve()
 
     assert events == [
+        ("root_started", "sample"),
         ("started", "sample"),
-        ("finished", "sample")
+        ("finished", "sample"),
+        ("root_finished", "sample")
     ]
 
 
@@ -242,3 +256,73 @@ def test_error_propagation() -> None:
     assert isinstance(task_one.exception, ValueError)
     assert not task_one.output.exists()
     assert not task_two.output.exists() 
+
+def test_root_task_failure() -> None:
+    events = []
+    
+    @listen(EventType.ROOT_FAILED)
+    def on_root_failed(event: Event) -> None:
+        events.append(("root_failed", event.task.name))
+
+    def failing_func(x: int) -> int:
+        raise ValueError("Task failed")
+
+    task = Task.create(
+        name="failing",
+        func=failing_func,
+        args=(5,),
+        dependencies=set()
+    )
+    
+    with pytest.raises(ValueError):  # noqa: PT011
+        task.output.resolve()
+
+    assert events == [("root_failed", "failing")]
+
+def test_dependency_task_events() -> None:
+    events = []
+    
+    @listen(EventType.ROOT_STARTED)
+    def on_root_started(event: Event) -> None:
+        events.append(("root_started", event.task.name))
+
+    @listen(EventType.TASK_STARTED)
+    def on_task_started(event: Event) -> None:
+        events.append(("started", event.task.name))
+
+    @listen(EventType.TASK_FINISHED)
+    def on_task_finished(event: Event) -> None:
+        events.append(("finished", event.task.name))
+
+    def add(a: int, b: int) -> int:
+        return a + b
+
+    def multiply(x: int) -> int:
+        return x * 2
+
+    # Create tasks
+    add_task = Task.create(
+        name="add",
+        func=add,
+        args=(1, 2),
+        dependencies=set()
+    )
+    
+    multiply_task = Task.create(
+        name="multiply",
+        func=multiply,
+        args=(add_task.output,),
+        dependencies={add_task}
+    )
+
+    # Resolve the root task
+    multiply_task.output.resolve()
+
+    # Verify events
+    assert events == [
+        ("root_started", "multiply"),  # Root task starts
+        ("started", "multiply"),       # Root task execution starts
+        ("started", "add"),           # Dependency task starts
+        ("finished", "add"),          # Dependency task completes
+        ("finished", "multiply"),     # Root task completes
+    ]
