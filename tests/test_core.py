@@ -2,14 +2,14 @@
 
 import pytest
 
-from purple_titanium import Event, EventType, LazyOutput, Task, TaskStatus, listen
+import purple_titanium as pt
 
 
 def test_lazy_output_creation() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task.create(
+    task = pt.Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
@@ -17,7 +17,7 @@ def test_lazy_output_creation() -> None:
     )
     output = task.output
 
-    assert isinstance(output, LazyOutput)
+    assert isinstance(output, pt.LazyOutput)
     assert output.owner == task
     assert output.value is None
     assert not output.exists()
@@ -27,7 +27,7 @@ def test_task_execution() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task.create(
+    task = pt.Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
@@ -38,7 +38,7 @@ def test_task_execution() -> None:
     assert output.resolve() == 10
     assert output.value == 10
     assert output.exists()
-    assert task.status == TaskStatus.COMPLETED
+    assert task.status == pt.TaskStatus.COMPLETED
 
 
 def test_task_dependencies() -> None:
@@ -48,13 +48,13 @@ def test_task_dependencies() -> None:
     def inc(n: int) -> int:
         return n + 1
 
-    task_one = Task.create(
+    task_one = pt.Task.create(
         name="one",
         func=one,
         args=(),
         dependencies=set()
     )
-    task_inc = Task.create(
+    task_inc = pt.Task.create(
         name="inc",
         func=inc,
         args=(task_one.output,),
@@ -62,15 +62,15 @@ def test_task_dependencies() -> None:
     )
 
     assert task_inc.output.resolve() == 2
-    assert task_one.status is TaskStatus.COMPLETED
-    assert task_inc.status is TaskStatus.COMPLETED
+    assert task_one.status is pt.TaskStatus.COMPLETED
+    assert task_inc.status is pt.TaskStatus.COMPLETED
 
 
 def test_task_error_handling() -> None:
     def failing_func(x: int) -> int:
         raise ValueError("x must be non-negative")
 
-    task = Task.create(
+    task = pt.Task.create(
         name="failing",
         func=failing_func,
         args=(-1,),
@@ -81,7 +81,7 @@ def test_task_error_handling() -> None:
     with pytest.raises(ValueError, match="x must be non-negative"):
         output.resolve()
 
-    assert task.status is TaskStatus.FAILED
+    assert task.status is pt.TaskStatus.FAILED
     assert isinstance(task.exception, ValueError)
     assert not output.exists()
 
@@ -89,30 +89,30 @@ def test_task_error_handling() -> None:
 def test_event_handling() -> None:
     events = []
     
-    @listen(EventType.ROOT_STARTED)
-    def on_root_started(event: Event) -> None:
+    @pt.listen(pt.EventType.ROOT_STARTED)
+    def on_root_started(event: pt.Event) -> None:
         events.append(("root_started", event.task.name))
 
-    @listen(EventType.ROOT_FINISHED)
-    def on_root_finished(event: Event) -> None:
+    @pt.listen(pt.EventType.ROOT_FINISHED)
+    def on_root_finished(event: pt.Event) -> None:
         events.append(("root_finished", event.task.name))
 
-    @listen(EventType.ROOT_FAILED)
-    def on_root_failed(event: Event) -> None:
+    @pt.listen(pt.EventType.ROOT_FAILED)
+    def on_root_failed(event: pt.Event) -> None:
         events.append(("root_failed", event.task.name))
 
-    @listen(EventType.TASK_STARTED)
-    def on_task_started(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_STARTED)
+    def on_task_started(event: pt.Event) -> None:
         events.append(("started", event.task.name))
 
-    @listen(EventType.TASK_FINISHED)
-    def on_task_finished(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_FINISHED)
+    def on_task_finished(event: pt.Event) -> None:
         events.append(("finished", event.task.name))
 
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = Task.create(
+    task = pt.Task.create(
         name="sample",
         func=sample_func,
         args=(5,),
@@ -134,7 +134,7 @@ def test_task_initialization_rules() -> None:
 
     def helper(x: int) -> int:
         # This should raise RuntimeError
-        return Task.create(
+        return pt.Task.create(
             name="nested",
             func=sample_func,
             args=(x,),
@@ -145,7 +145,7 @@ def test_task_initialization_rules() -> None:
         return helper(x)
 
     # Test that task initialization can be done at top level
-    task = Task.create(
+    task = pt.Task.create(
         name="valid",
         func=sample_func,
         args=(5,),
@@ -154,7 +154,7 @@ def test_task_initialization_rules() -> None:
     assert task.output.resolve() == 10
 
     # Test that task initialization cannot be done inside a task
-    invalid_task = Task.create(
+    invalid_task = pt.Task.create(
         name="invalid",
         func=invalid_task,
         args=(5,),
@@ -171,13 +171,13 @@ def test_multiple_resolve_calls() -> None:
     def two() -> int:
         return 2
 
-    task_one = Task.create(
+    task_one = pt.Task.create(
         name="one",
         func=one,
         args=(),
         dependencies=set()
     )
-    task_two = Task.create(
+    task_two = pt.Task.create(
         name="two",
         func=two,
         args=(),
@@ -187,8 +187,8 @@ def test_multiple_resolve_calls() -> None:
     # Test that multiple resolve() calls are allowed at top level
     assert task_one.output.resolve() == 1
     assert task_two.output.resolve() == 2
-    assert task_one.status is TaskStatus.COMPLETED
-    assert task_two.status is TaskStatus.COMPLETED
+    assert task_one.status is pt.TaskStatus.COMPLETED
+    assert task_two.status is pt.TaskStatus.COMPLETED
 
 
 def test_dependency_resolution_order() -> None:
@@ -201,19 +201,19 @@ def test_dependency_resolution_order() -> None:
     def add(a: int, b: int) -> int:
         return a + b
 
-    task_one = Task.create(
+    task_one = pt.Task.create(
         name="one",
         func=one,
         args=(),
         dependencies=set()
     )
-    task_two = Task.create(
+    task_two = pt.Task.create(
         name="two",
         func=inc,
         args=(task_one.output,),
         dependencies={task_one}
     )
-    task_three = Task.create(
+    task_three = pt.Task.create(
         name="three",
         func=add,
         args=(task_one.output, task_two.output),
@@ -222,9 +222,9 @@ def test_dependency_resolution_order() -> None:
 
     # Test that dependencies are resolved in correct order
     assert task_three.output.resolve() == 3  # 1 + (1 + 1)
-    assert task_one.status is TaskStatus.COMPLETED
-    assert task_two.status is TaskStatus.COMPLETED
-    assert task_three.status is TaskStatus.COMPLETED
+    assert task_one.status is pt.TaskStatus.COMPLETED
+    assert task_two.status is pt.TaskStatus.COMPLETED
+    assert task_three.status is pt.TaskStatus.COMPLETED
 
 
 def test_error_propagation() -> None:
@@ -234,13 +234,13 @@ def test_error_propagation() -> None:
     def dependent_task(x: int) -> int:
         return x * 2
 
-    task_one = Task.create(
+    task_one = pt.Task.create(
         name="failing",
         func=failing_task,
         args=(42,),
         dependencies=set()
     )
-    task_two = Task.create(
+    task_two = pt.Task.create(
         name="dependent",
         func=dependent_task,
         args=(task_one.output,),
@@ -251,8 +251,8 @@ def test_error_propagation() -> None:
     with pytest.raises(ValueError, match="Task failed"):
         task_two.output.resolve()
 
-    assert task_one.status is TaskStatus.FAILED
-    assert task_two.status is TaskStatus.DEP_FAILED
+    assert task_one.status is pt.TaskStatus.FAILED
+    assert task_two.status is pt.TaskStatus.DEP_FAILED
     assert isinstance(task_one.exception, ValueError)
     assert not task_one.output.exists()
     assert not task_two.output.exists() 
@@ -260,14 +260,14 @@ def test_error_propagation() -> None:
 def test_root_task_failure() -> None:
     events = []
     
-    @listen(EventType.ROOT_FAILED)
-    def on_root_failed(event: Event) -> None:
+    @pt.listen(pt.EventType.ROOT_FAILED)
+    def on_root_failed(event: pt.Event) -> None:
         events.append(("root_failed", event.task.name))
 
     def failing_func(x: int) -> int:
         raise ValueError("Task failed")
 
-    task = Task.create(
+    task = pt.Task.create(
         name="failing",
         func=failing_func,
         args=(5,),
@@ -282,16 +282,16 @@ def test_root_task_failure() -> None:
 def test_dependency_task_events() -> None:
     events = []
     
-    @listen(EventType.ROOT_STARTED)
-    def on_root_started(event: Event) -> None:
+    @pt.listen(pt.EventType.ROOT_STARTED)
+    def on_root_started(event: pt.Event) -> None:
         events.append(("root_started", event.task.name))
 
-    @listen(EventType.TASK_STARTED)
-    def on_task_started(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_STARTED)
+    def on_task_started(event: pt.Event) -> None:
         events.append(("started", event.task.name))
 
-    @listen(EventType.TASK_FINISHED)
-    def on_task_finished(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_FINISHED)
+    def on_task_finished(event: pt.Event) -> None:
         events.append(("finished", event.task.name))
 
     def add(a: int, b: int) -> int:
@@ -301,14 +301,14 @@ def test_dependency_task_events() -> None:
         return x * 2
 
     # Create tasks
-    add_task = Task.create(
+    add_task = pt.Task.create(
         name="add",
         func=add,
         args=(1, 2),
         dependencies=set()
     )
     
-    multiply_task = Task.create(
+    multiply_task = pt.Task.create(
         name="multiply",
         func=multiply,
         args=(add_task.output,),

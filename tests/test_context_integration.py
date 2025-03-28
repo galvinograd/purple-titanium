@@ -4,23 +4,21 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from purple_titanium.context import Context, get_current_context
-from purple_titanium.decorators import task
-from purple_titanium.types import Injectable
+import purple_titanium as pt
 
 
 def test_task_context_inheritance() -> None:
     """Test that tasks inherit context from their creation point."""
-    @task()
+    @pt.task()
     def get_context_value() -> int:
-        return get_current_context().value
+        return pt.get_current_context().value
     
     # Create task in value=1 context
-    with Context(value=1):
+    with pt.Context(value=1):
         task1 = get_context_value()
     
     # Create task in value=2 context
-    with Context(value=2):
+    with pt.Context(value=2):
         task2 = get_context_value()
     
     # Each task should maintain its own context
@@ -30,12 +28,12 @@ def test_task_context_inheritance() -> None:
 
 def test_task_context_isolation() -> None:
     """Test that tasks maintain context isolation in concurrent execution."""
-    @task()
+    @pt.task()
     def get_context_value() -> int:
-        return get_current_context().value
+        return pt.get_current_context().value
     
     def worker(value: int) -> int:
-        with Context(value=value):
+        with pt.Context(value=value):
             task = get_context_value()
             return task.resolve()
     
@@ -49,16 +47,16 @@ def test_task_context_isolation() -> None:
 
 def test_task_context_with_dependencies() -> None:
     """Test context inheritance in task dependencies."""
-    @task()
+    @pt.task()
     def get_context_value() -> int:
-        return get_current_context().value
+        return pt.get_current_context().value
     
-    @task()
+    @pt.task()
     def double(x: int) -> int:
         return x * 2
     
     # Create tasks in value=5 context
-    with Context(value=5):
+    with pt.Context(value=5):
         value_task = get_context_value()
         double_task = double(value_task)
     
@@ -68,12 +66,12 @@ def test_task_context_with_dependencies() -> None:
 
 def test_task_context_with_injectable() -> None:
     """Test context injection with Injectable parameters."""
-    @task()
-    def process_data(data: int, multiplier: Injectable[int]) -> int:
+    @pt.task()
+    def process_data(data: int, multiplier: pt.Injectable[int]) -> int:
         return data * multiplier
     
     # Create task in multiplier=3 context
-    with Context(multiplier=3):
+    with pt.Context(multiplier=3):
         task_obj = process_data(5)
     
     # Task should use injected multiplier from context
@@ -82,20 +80,20 @@ def test_task_context_with_injectable() -> None:
 
 def test_task_context_with_nested_dependencies() -> None:
     """Test context inheritance in nested task dependencies."""
-    @task()
+    @pt.task()
     def get_context_value() -> int:
-        return get_current_context().value
+        return pt.get_current_context().value
     
-    @task()
+    @pt.task()
     def add(a: int, b: int) -> int:
         return a + b
     
-    @task()
+    @pt.task()
     def multiply(x: int, y: int) -> int:
         return x * y
     
     # Create tasks in value=2 context
-    with Context(value=2):
+    with pt.Context(value=2):
         value1 = get_context_value()
         value2 = get_context_value()
         sum_task = add(value1, value2)
@@ -107,16 +105,16 @@ def test_task_context_with_nested_dependencies() -> None:
 
 def test_task_context_with_error_handling() -> None:
     """Test context preservation during error handling."""
-    @task()
+    @pt.task()
     def failing_task() -> int:
         raise ValueError("Task failed")
     
-    @task()
+    @pt.task()
     def dependent_task(x: int) -> int:
         return x * 2
     
     # Create tasks in value=3 context
-    with Context(value=3):
+    with pt.Context(value=3):
         failing = failing_task()
         dependent = dependent_task(failing)
     
@@ -127,12 +125,12 @@ def test_task_context_with_error_handling() -> None:
 
 def test_task_context_with_thread_safety() -> None:
     """Test thread safety of task context inheritance."""
-    @task()
+    @pt.task()
     def get_context_value() -> int:
-        return get_current_context().value
+        return pt.get_current_context().value
     
     def worker(value: int) -> int:
-        with Context(value=value):
+        with pt.Context(value=value):
             task = get_context_value()
             return task.resolve()
     

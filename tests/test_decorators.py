@@ -1,26 +1,26 @@
 """Tests for the decorator API."""
 import pytest
 
-from purple_titanium import Event, EventType, LazyOutput, listen, task
+import purple_titanium as pt
 
 
 def test_task_decorator() -> None:
-    @task()
+    @pt.task()
     def add(a: int, b: int) -> int:
         return a + b
 
     result = add(1, 2)
-    assert isinstance(result, LazyOutput)
+    assert isinstance(result, pt.LazyOutput)
     assert result.resolve() == 3
     assert result.exists()
 
 
 def test_task_decorator_with_dependencies() -> None:
-    @task()
+    @pt.task()
     def one() -> int:
         return 1
 
-    @task()
+    @pt.task()
     def inc(n: int) -> int:
         return n + 1
 
@@ -33,7 +33,7 @@ def test_task_decorator_with_dependencies() -> None:
 
 
 def test_task_decorator_with_error() -> None:
-    @task()
+    @pt.task()
     def failing_task(x: int) -> int:
         raise ValueError(f"Task failed with input {x}")
 
@@ -45,11 +45,11 @@ def test_task_decorator_with_error() -> None:
 
 
 def test_task_decorator_with_error_propagation() -> None:
-    @task()
+    @pt.task()
     def failing_task(x: int) -> int:
         raise ValueError(f"Task failed with input {x}")
 
-    @task()
+    @pt.task()
     def dependent_task(x: int) -> int:
         return x * 2
 
@@ -66,15 +66,15 @@ def test_task_decorator_with_error_propagation() -> None:
 def test_listen_decorator() -> None:
     events = []
 
-    @listen(EventType.TASK_STARTED)
-    def on_task_started(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_STARTED)
+    def on_task_started(event: pt.Event) -> None:
         events.append(("started", event.task.name))
 
-    @listen(EventType.TASK_FINISHED)
-    def on_task_finished(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_FINISHED)
+    def on_task_finished(event: pt.Event) -> None:
         events.append(("finished", event.task.name))
 
-    @task()
+    @pt.task()
     def sample_task(x: int) -> int:
         return x * 2
 
@@ -89,19 +89,19 @@ def test_listen_decorator() -> None:
 
 def test_complex_dag_execution() -> None:
     """Test execution of a complex DAG with multiple dependencies."""
-    @task()
+    @pt.task()
     def source() -> int:
         return 1
 
-    @task()
+    @pt.task()
     def double(x: int) -> int:
         return x * 2
 
-    @task()
+    @pt.task()
     def triple(x: int) -> int:
         return x * 3
 
-    @task()
+    @pt.task()
     def sum_values(a: int, b: int) -> int:
         return a + b
 
@@ -116,7 +116,7 @@ def test_complex_dag_execution() -> None:
 
 def test_task_decorator_type_hints() -> None:
     """Test that type hints are preserved through the task decorator."""
-    @task()
+    @pt.task()
     def typed_task(x: int, y: str) -> str:
         return y * x
 
@@ -126,7 +126,7 @@ def test_task_decorator_type_hints() -> None:
 
 def test_task_decorator_kwargs() -> None:
     """Test that keyword arguments are handled correctly."""
-    @task()
+    @pt.task()
     def add(a: int, b: int) -> int:
         return a + b
 
@@ -136,15 +136,15 @@ def test_task_decorator_kwargs() -> None:
 
 def test_task_decorator_nested_dependencies() -> None:
     """Test that nested dependencies are handled correctly."""
-    @task()
+    @pt.task()
     def level1() -> int:
         return 1
 
-    @task()
+    @pt.task()
     def level2(x: int) -> int:
         return x + 1
 
-    @task()
+    @pt.task()
     def level3(x: int) -> int:
         return x + 1
 
@@ -159,15 +159,15 @@ def test_listen_decorator_multiple_events() -> None:
     """Test that multiple event listeners can be registered for the same event."""
     events = []
 
-    @listen(EventType.TASK_STARTED)
-    def listener1(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_STARTED)
+    def listener1(event: pt.Event) -> None:
         events.append(("listener1", event.task.name))
 
-    @listen(EventType.TASK_STARTED)
-    def listener2(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_STARTED)
+    def listener2(event: pt.Event) -> None:
         events.append(("listener2", event.task.name))
 
-    @task()
+    @pt.task()
     def sample_task() -> int:
         return 42
 
@@ -182,17 +182,17 @@ def test_task_decorator_error_handling_with_try_except() -> None:
     """Test that tasks can handle errors internally."""
     events = []
 
-    @listen(EventType.TASK_FAILED)
-    def on_task_failed(event: Event) -> None:
+    @pt.listen(pt.EventType.TASK_FAILED)
+    def on_task_failed(event: pt.Event) -> None:
         events.append(("failed", event.task.name))
 
-    @task()
+    @pt.task()
     def might_fail(x: int) -> int:
         if x < 0:
             raise ValueError("x must be non-negative")
         return x * 2
 
-    @task()
+    @pt.task()
     def safe_task(x: int) -> int:
         try:
             if x < 0:
@@ -223,16 +223,16 @@ def test_task_decorator_with_all_event_types() -> None:
     """Test that all event types are emitted correctly."""
     events = []
 
-    for event_type in EventType:
-        @listen(event_type)
-        def listener(event: Event, event_type: EventType = event_type) -> None:
+    for event_type in pt.EventType:
+        @pt.listen(event_type)
+        def listener(event: pt.Event, event_type: pt.EventType = event_type) -> None:
             events.append((event_type, event.task.name))
 
-    @task()
+    @pt.task()
     def failing_task() -> int:
         raise ValueError("Task failed")
 
-    @task()
+    @pt.task()
     def dependent_task(x: int) -> int:
         return x * 2
 
@@ -241,6 +241,6 @@ def test_task_decorator_with_all_event_types() -> None:
     with pytest.raises(ValueError, match="Task failed"):
         result.resolve()
 
-    assert (EventType.TASK_STARTED, "tests.test_decorators.failing_task") in events
-    assert (EventType.TASK_FAILED, "tests.test_decorators.failing_task") in events
-    assert (EventType.TASK_DEP_FAILED, "tests.test_decorators.dependent_task") in events 
+    assert (pt.EventType.TASK_STARTED, "tests.test_decorators.failing_task") in events
+    assert (pt.EventType.TASK_FAILED, "tests.test_decorators.failing_task") in events
+    assert (pt.EventType.TASK_DEP_FAILED, "tests.test_decorators.dependent_task") in events 

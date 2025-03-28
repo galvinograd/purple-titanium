@@ -5,12 +5,12 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from purple_titanium.context import Context, get_current_context
+import purple_titanium as pt
 
 
 def test_basic_context() -> None:
     """Test basic context creation and attribute access."""
-    ctx = Context(debug=True, timeout=30)
+    ctx = pt.Context(debug=True, timeout=30)
     assert ctx.debug is True
     assert ctx.timeout == 30
     
@@ -21,7 +21,7 @@ def test_basic_context() -> None:
 
 def test_context_inheritance() -> None:
     """Test context inheritance through replace()."""
-    base = Context(debug=True, timeout=30)
+    base = pt.Context(debug=True, timeout=30)
     child = base.replace(timeout=60)
     
     assert child.debug is True  # Inherited from parent
@@ -33,31 +33,31 @@ def test_context_inheritance() -> None:
 
 def test_context_manager() -> None:
     """Test context manager functionality."""
-    ctx0 = Context(
+    ctx0 = pt.Context(
         debug=False,
         timeout=60,
     )
-    ctx1 = Context(debug=True)
-    ctx2 = Context(timeout=30)
+    ctx1 = pt.Context(debug=True)
+    ctx2 = pt.Context(timeout=30)
     
     # Test entering and exiting contexts
     with ctx0:
         with ctx1:
-            assert get_current_context().debug is True
+            assert pt.get_current_context().debug is True
             with ctx2:
-                assert get_current_context().timeout == 30
-                assert get_current_context().debug is True  # Inherited from parent
-            assert get_current_context().debug is True  # Back to ctx1
-        assert get_current_context().debug is False  # Back to default
-    assert not hasattr(get_current_context(), 'debug')  # Back to default
-    assert not hasattr(get_current_context(), 'timeout')  # Back to default
+                assert pt.get_current_context().timeout == 30
+                assert pt.get_current_context().debug is True  # Inherited from parent
+            assert pt.get_current_context().debug is True  # Back to ctx1
+        assert pt.get_current_context().debug is False  # Back to default
+    assert not hasattr(pt.get_current_context(), 'debug')  # Back to default
+    assert not hasattr(pt.get_current_context(), 'timeout')  # Back to default
 
 def test_thread_safety() -> None:
     """Test thread safety of context stack."""
     def worker() -> None:
-        ctx = Context(thread_id=threading.get_ident())
+        ctx = pt.Context(thread_id=threading.get_ident())
         with ctx:
-            assert get_current_context().thread_id == threading.get_ident()
+            assert pt.get_current_context().thread_id == threading.get_ident()
     
     threads = [threading.Thread(target=worker) for _ in range(5)]
     for thread in threads:
@@ -66,12 +66,12 @@ def test_thread_safety() -> None:
         thread.join()
     
     # Main thread context should be restored
-    assert not hasattr(get_current_context(), 'thread_id')
+    assert not hasattr(pt.get_current_context(), 'thread_id')
 
 
 def test_context_immutability() -> None:
     """Test that contexts are truly immutable."""
-    ctx = Context(debug=True)
+    ctx = pt.Context(debug=True)
     
     # Attempting to modify settings should raise TypeError
     with pytest.raises(TypeError):
@@ -84,9 +84,9 @@ def test_context_immutability() -> None:
 
 def test_context_equality() -> None:
     """Test context equality comparison."""
-    ctx1 = Context(debug=True)
-    ctx2 = Context(debug=True)
-    ctx3 = Context(debug=False)
+    ctx1 = pt.Context(debug=True)
+    ctx2 = pt.Context(debug=True)
+    ctx3 = pt.Context(debug=False)
     
     assert ctx1 == ctx2
     assert ctx1 != ctx3
@@ -99,9 +99,9 @@ def test_context_equality() -> None:
 
 def test_context_hash() -> None:
     """Test that contexts can be hashed."""
-    ctx1 = Context(debug=True)
-    ctx2 = Context(debug=True)
-    ctx3 = Context(debug=False)
+    ctx1 = pt.Context(debug=True)
+    ctx2 = pt.Context(debug=True)
+    ctx3 = pt.Context(debug=False)
     
     # Equal contexts should have equal hashes
     assert hash(ctx1) == hash(ctx2)
@@ -116,7 +116,7 @@ def test_context_hash() -> None:
 def test_default_context() -> None:
     """Test default context behavior."""
     # Default context should have default settings
-    default = get_current_context()
+    default = pt.get_current_context()
     assert len(default) == 0
     
     # Default context should be immutable
