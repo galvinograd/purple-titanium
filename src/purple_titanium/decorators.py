@@ -12,12 +12,16 @@ from .types import Injectable
 
 T = TypeVar('T')
 
-def task() -> Callable[[Callable[..., T]], Callable[..., LazyOutput[T]]]:
+def task(task_version: int | None = None) -> Callable[[Callable[..., T]], Callable[..., LazyOutput[T]]]:
     """Decorator to create a task from a function.
     
     This decorator wraps a function to create a task that can be executed as part of a pipeline.
     The decorated function can be called with arguments, and it will return a LazyOutput that
     can be resolved to get the actual result.
+    
+    Args:
+        task_version: Optional version number for the task. When changed, it will create a new
+                     signature for the task, useful for invalidating cached results.
     
     Example:
         @task()
@@ -26,6 +30,10 @@ def task() -> Callable[[Callable[..., T]], Callable[..., LazyOutput[T]]]:
             
         result = add(1, 2)
         value = result.resolve()  # returns 3
+        
+        @task(task_version=2)
+        def add_v2(a: int, b: int) -> int:
+            return a + b  # Same logic, different version
     """
     def decorator(func: Callable[..., T]) -> Callable[..., LazyOutput[T]]:
         """Create a task from a function."""
@@ -58,7 +66,7 @@ def task() -> Callable[[Callable[..., T]], Callable[..., LazyOutput[T]]]:
             
             # Create the task
             task_name = f"{func.__module__}.{func.__name__}"
-            task = Task(task_name, func, args, kwargs)
+            task = Task(task_name, func, args, kwargs, task_version=task_version)
             
             # Find dependencies in args and kwargs
             dependencies = set()

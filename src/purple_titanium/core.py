@@ -1,9 +1,11 @@
 """Core task and output classes."""
 
+import hashlib
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from inspect import signature
 from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
 
 from .context import Context, get_current_context
@@ -54,6 +56,7 @@ class TaskState:
     exception: Exception | None = None
     output: Optional['LazyOutput'] = None
     dependencies: set['Task'] = field(default_factory=set)
+    signature: int = 0  # Task signature for caching and identification
 
 @dataclass(frozen=True)
 class Task:
@@ -64,16 +67,70 @@ class Task:
     kwargs: dict = field(default_factory=dict)
     _state: TaskState = field(default_factory=TaskState)
     context: Context = field(default_factory=get_current_context)
+    task_version: int = 1
 
     def __post_init__(self) -> None:
         """Initialize the output after the task is created."""
         if getattr(_task_context, 'in_task', False):
             raise RuntimeError("task() cannot be called inside a task")
         self._state.output = LazyOutput(owner=self)
+        # Calculate signature during initialization
+        self._state.signature = self._calculate_signature()
+
+    def _build_parameter_dict(self) -> dict[str, Any]:
+        """Convert args and kwargs into a single parameter dictionary using parameter names."""
+        func_sig = signature(self.func)
+        bound_args = func_sig.bind(*self.args, **self.kwargs)
+        bound_args.apply_defaults()
+        return dict(bound_args.arguments)
+
+    def _calculate_signature(self) -> int:
+        """Calculate a deterministic hash signature for this task."""
+        # Create a tuple of all components to hash
+        components = (
+            self.name,  # Task name
+            self.task_version,  # Version
+            self._hash_parameters(self._build_parameter_dict())  # Parameters
+        )
+        # Use sha256 for secure hashing
+        components_str = str(components).encode('utf-8')
+        return int(hashlib.sha256(components_str).hexdigest(), 16) % (10**10)
+
+    def _hash_parameters(self, parameters: dict[str, Any]) -> tuple:
+        """Convert parameters into a hashable tuple."""
+        # Sort by parameter name for deterministic ordering
+        return tuple(
+            (name, self._hash_value(value))
+            for name, value in sorted(parameters.items())
+        )
+
+    def _hash_value(self, value: Any) -> Any:  # noqa: ANN401
+        """Convert a value into a hashable form."""
+        if isinstance(value, str):
+            return value
+        if isinstance(value, LazyOutput):
+            # For nested tasks, use their signature
+            return value.owner.signature
+        if isinstance(value, (list | tuple)):
+            # Convert sequence to tuple of hashed items
+            return (type(value).__name__, len(value), tuple(self._hash_value(item) for item in value))
+        if isinstance(value, dict):
+            # Convert dict to tuple of sorted key-value pairs
+            return ('dict', tuple(
+                (self._hash_value(key), self._hash_value(val))
+                for key, val in sorted(value.items())
+            ))
+        # For basic types, use their string representation
+        return (type(value).__name__, str(value))
+
+    @property
+    def signature(self) -> int:
+        """Get the task's signature."""
+        return self._state.signature
 
     def __hash__(self) -> int:
         """Return a hash based on the task's name and function."""
-        return hash(self.name)
+        return self._state.signature
 
     def __eq__(self, other: object) -> bool:
         """Compare tasks based on their name and function."""
@@ -104,10 +161,11 @@ class Task:
         func: Callable, 
         args: tuple = (), 
         kwargs: dict = None, 
-        dependencies: set['Task'] = None
+        dependencies: set['Task'] = None,
+        task_version: int = 1
     ) -> 'Task':
         """Create a new task with the given parameters."""
-        task = cls(name, func, args, kwargs or {})
+        task = cls(name, func, args, kwargs or {}, task_version=task_version)
         task._state.dependencies = dependencies or set()
         return task
 
