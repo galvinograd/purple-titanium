@@ -7,6 +7,7 @@ from .events import Event, EventType
 from .events import listen as register_listener
 from .lazy_output import LazyOutput
 from .task import Task
+from .task_factory import TaskFactory
 
 T = TypeVar('T')
 
@@ -39,7 +40,7 @@ def task(task_version: int | None = None) -> Callable[[Callable[..., T]], Callab
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> LazyOutput[T]:
             """Create a task with the given arguments."""
-            return Task.create(
+            return TaskFactory.create(
                 name=f'{func.__module__}.{func.__name__}',
                 func=func, 
                 args=args, 

@@ -3,13 +3,14 @@
 import pytest
 
 import purple_titanium as pt
+from purple_titanium.task_factory import TaskFactory
 
 
 def test_lazy_output_creation() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="sample",
         func=sample_func,
         args=(5,),
@@ -26,7 +27,7 @@ def test_task_execution() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="sample",
         func=sample_func,
         args=(5,),
@@ -46,12 +47,12 @@ def test_task_dependencies() -> None:
     def inc(n: int) -> int:
         return n + 1
 
-    task_one = pt.Task.create(
+    task_one = TaskFactory.create(
         name="one",
         func=one,
         args=(),
     )
-    task_inc = pt.Task.create(
+    task_inc = TaskFactory.create(
         name="inc",
         func=inc,
         args=(task_one.output,),
@@ -66,7 +67,7 @@ def test_task_error_handling() -> None:
     def failing_func(x: int) -> int:
         raise ValueError("x must be non-negative")
 
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="failing",
         func=failing_func,
         args=(-1,),
@@ -107,18 +108,19 @@ def test_event_handling() -> None:
     def sample_func(x: int) -> int:
         return x * 2
 
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="sample",
         func=sample_func,
         args=(5,),
     )
-    task.output.resolve()
+    output = task.output
 
+    assert output.resolve() == 10
     assert events == [
         ("root_started", "sample"),
         ("started", "sample"),
         ("finished", "sample"),
-        ("root_finished", "sample")
+        ("root_finished", "sample"),
     ]
 
 
@@ -128,7 +130,7 @@ def test_task_initialization_rules() -> None:
 
     def helper(x: int) -> int:
         # This should raise RuntimeError
-        return pt.Task.create(
+        return TaskFactory.create(
             name="nested",
             func=sample_func,
             args=(x,),
@@ -138,7 +140,7 @@ def test_task_initialization_rules() -> None:
         return helper(x)
 
     # Test that task initialization can be done at top level
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="valid",
         func=sample_func,
         args=(5,),
@@ -146,7 +148,7 @@ def test_task_initialization_rules() -> None:
     assert task.output.resolve() == 10
 
     # Test that task initialization cannot be done inside a task
-    invalid_task = pt.Task.create(
+    invalid_task = TaskFactory.create(
         name="invalid",
         func=invalid_task,
         args=(5,),
@@ -162,12 +164,12 @@ def test_multiple_resolve_calls() -> None:
     def two() -> int:
         return 2
 
-    task_one = pt.Task.create(
+    task_one = TaskFactory.create(
         name="one",
         func=one,
         args=(),
     )
-    task_two = pt.Task.create(
+    task_two = TaskFactory.create(
         name="two",
         func=two,
         args=(),
@@ -190,17 +192,17 @@ def test_dependency_resolution_order() -> None:
     def add(a: int, b: int) -> int:
         return a + b
 
-    task_one = pt.Task.create(
+    task_one = TaskFactory.create(
         name="one",
         func=one,
         args=(),
     )
-    task_two = pt.Task.create(
+    task_two = TaskFactory.create(
         name="two",
         func=inc,
         args=(task_one.output,),
     )
-    task_three = pt.Task.create(
+    task_three = TaskFactory.create(
         name="three",
         func=add,
         args=(task_one.output, task_two.output),
@@ -220,12 +222,12 @@ def test_error_propagation() -> None:
     def dependent_task(x: int) -> int:
         return x * 2
 
-    task_one = pt.Task.create(
+    task_one = TaskFactory.create(
         name="failing",
         func=failing_task,
         args=(42,),
     )
-    task_two = pt.Task.create(
+    task_two = TaskFactory.create(
         name="dependent",
         func=dependent_task,
         args=(task_one.output,),
@@ -251,7 +253,7 @@ def test_root_task_failure() -> None:
     def failing_func(x: int) -> int:
         raise ValueError("Task failed")
 
-    task = pt.Task.create(
+    task = TaskFactory.create(
         name="failing",
         func=failing_func,
         args=(5,),
@@ -284,13 +286,13 @@ def test_dependency_task_events() -> None:
         return x * 2
 
     # Create tasks
-    add_task = pt.Task.create(
+    add_task = TaskFactory.create(
         name="add",
         func=add,
         args=(1, 2),
     )
     
-    multiply_task = pt.Task.create(
+    multiply_task = TaskFactory.create(
         name="multiply",
         func=multiply,
         args=(add_task.output,),

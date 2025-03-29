@@ -8,7 +8,6 @@ from .context import Context, get_current_context
 from .events import Event, EventType, emit
 from .lazy_output import LazyOutput
 from .task_executor import TaskExecutor
-from .task_factory import TaskFactory
 from .task_mode import _task_context
 from .task_signature import TaskSignature
 from .task_state import TaskParameters, TaskState
@@ -29,24 +28,6 @@ class Task:
         """Initialize the output after the task is created."""
         self._state.output = LazyOutput(owner=self)
         self._state.signature = self._calculate_signature()
-
-    @classmethod
-    def create(
-        cls,
-        name: str,
-        func: Callable,
-        args: tuple = (),
-        kwargs: dict = None,
-        task_version: int = 1
-    ) -> 'Task':
-        """Create a new task with the given parameters (for backward compatibility)."""
-        return TaskFactory.create(
-            name=name,
-            func=func,
-            args=args,
-            kwargs=kwargs,
-            task_version=task_version
-        )
 
     def _calculate_signature(self) -> int:
         """Calculate a deterministic hash signature for this task."""

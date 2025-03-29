@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from .types import EventType
 
 if TYPE_CHECKING:
-    from .core import Task
+    from .task import Task
 
 logger = logging.getLogger(__name__)
 
