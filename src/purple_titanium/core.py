@@ -6,7 +6,8 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field, is_dataclass
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, get_type_hints
+from typing import (TYPE_CHECKING, Any, Generic, Optional, TypeVar,
+                    get_type_hints)
 
 from .annotations import Ignorable, Injectable
 from .context import Context, get_current_context
@@ -56,7 +57,6 @@ class TaskState:
     status: TaskStatus = TaskStatus.PENDING
     exception: Exception | None = None
     output: Optional['LazyOutput'] = None
-    dependencies: set['Task'] = field(default_factory=set)
     signature: int = 0  # Task signature for caching and identification
 
 @dataclass(frozen=True)
@@ -186,7 +186,15 @@ class Task:
 
     @property
     def dependencies(self) -> set['Task']:
-        return self._state.dependencies
+        # Find dependencies in args and kwargs
+        dependencies = set()
+        for arg in self.args:
+            if isinstance(arg, LazyOutput):
+                dependencies.add(arg.owner)
+        for arg in self.kwargs.values():
+            if isinstance(arg, LazyOutput):
+                dependencies.add(arg.owner)
+        return dependencies
 
     @classmethod
     def create(
@@ -195,7 +203,6 @@ class Task:
         func: Callable, 
         args: tuple = (), 
         kwargs: dict = None, 
-        dependencies: set['Task'] = None,
         task_version: int = 1
     ) -> 'Task':
         """Create a new task with the given parameters."""
@@ -232,16 +239,7 @@ class Task:
                     f"Required injectable parameter '{p_name}' not found in context"
                 )
             # Otherwise, use the default value
-        
-        # Find dependencies in args and kwargs
-        dependencies = set()
-        for arg in args:
-            if isinstance(arg, LazyOutput):
-                dependencies.add(arg.owner)
-        for arg in kwargs.values():
-            if isinstance(arg, LazyOutput):
-                dependencies.add(arg.owner)
-        
+
         task = cls(
             name=name, 
             func=func, 
@@ -249,7 +247,6 @@ class Task:
             kwargs=kwargs or {}, 
             task_version=task_version
         )
-        task._state.dependencies = dependencies
         
         return task
 

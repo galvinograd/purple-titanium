@@ -13,7 +13,6 @@ def test_lazy_output_creation() -> None:
         name="sample",
         func=sample_func,
         args=(5,),
-        dependencies=set()
     )
     output = task.output
 
@@ -31,7 +30,6 @@ def test_task_execution() -> None:
         name="sample",
         func=sample_func,
         args=(5,),
-        dependencies=set()
     )
     output = task.output
 
@@ -52,13 +50,11 @@ def test_task_dependencies() -> None:
         name="one",
         func=one,
         args=(),
-        dependencies=set()
     )
     task_inc = pt.Task.create(
         name="inc",
         func=inc,
         args=(task_one.output,),
-        dependencies={task_one}
     )
 
     assert task_inc.output.resolve() == 2
@@ -74,7 +70,6 @@ def test_task_error_handling() -> None:
         name="failing",
         func=failing_func,
         args=(-1,),
-        dependencies=set()
     )
     output = task.output
 
@@ -116,7 +111,6 @@ def test_event_handling() -> None:
         name="sample",
         func=sample_func,
         args=(5,),
-        dependencies=set()
     )
     task.output.resolve()
 
@@ -138,7 +132,6 @@ def test_task_initialization_rules() -> None:
             name="nested",
             func=sample_func,
             args=(x,),
-            dependencies=set()
         ).output
 
     def invalid_task(x: int) -> int:
@@ -149,7 +142,6 @@ def test_task_initialization_rules() -> None:
         name="valid",
         func=sample_func,
         args=(5,),
-        dependencies=set()
     )
     assert task.output.resolve() == 10
 
@@ -158,7 +150,6 @@ def test_task_initialization_rules() -> None:
         name="invalid",
         func=invalid_task,
         args=(5,),
-        dependencies=set()
     )
     with pytest.raises(RuntimeError, match="task\\(\\) cannot be called inside a task"):
         invalid_task.output.resolve()
@@ -175,13 +166,11 @@ def test_multiple_resolve_calls() -> None:
         name="one",
         func=one,
         args=(),
-        dependencies=set()
     )
     task_two = pt.Task.create(
         name="two",
         func=two,
         args=(),
-        dependencies=set()
     )
 
     # Test that multiple resolve() calls are allowed at top level
@@ -205,19 +194,16 @@ def test_dependency_resolution_order() -> None:
         name="one",
         func=one,
         args=(),
-        dependencies=set()
     )
     task_two = pt.Task.create(
         name="two",
         func=inc,
         args=(task_one.output,),
-        dependencies={task_one}
     )
     task_three = pt.Task.create(
         name="three",
         func=add,
         args=(task_one.output, task_two.output),
-        dependencies={task_one, task_two}
     )
 
     # Test that dependencies are resolved in correct order
@@ -238,13 +224,11 @@ def test_error_propagation() -> None:
         name="failing",
         func=failing_task,
         args=(42,),
-        dependencies=set()
     )
     task_two = pt.Task.create(
         name="dependent",
         func=dependent_task,
         args=(task_one.output,),
-        dependencies={task_one}
     )
 
     # Test that errors propagate through the DAG
@@ -271,7 +255,6 @@ def test_root_task_failure() -> None:
         name="failing",
         func=failing_func,
         args=(5,),
-        dependencies=set()
     )
     
     with pytest.raises(ValueError):  # noqa: PT011
@@ -305,14 +288,12 @@ def test_dependency_task_events() -> None:
         name="add",
         func=add,
         args=(1, 2),
-        dependencies=set()
     )
     
     multiply_task = pt.Task.create(
         name="multiply",
         func=multiply,
         args=(add_task.output,),
-        dependencies={add_task}
     )
 
     # Resolve the root task
