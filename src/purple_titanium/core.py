@@ -1,62 +1,25 @@
 """Core task and output classes."""
 
 import hashlib
-import threading
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass, field, is_dataclass
 from inspect import signature
-from typing import (TYPE_CHECKING, Any, Generic, Optional, TypeVar,
-                    get_type_hints)
+from typing import Any, get_type_hints
 
 from .annotations import Ignorable, Injectable
 from .context import Context, get_current_context
 from .events import Event, emit
+from .lazy_output import LazyOutput
+from .task_mode import _task_context, enter_exec_phase, enter_resolution_phase
 from .types import EventType, TaskStatus
 
-if TYPE_CHECKING:
-    from .core import Task
-
-T = TypeVar('T')
-
-# Thread-local storage for tracking task initialization and resolution
-_task_context = threading.local()
-_task_context.in_task = False
-_task_context.resolving_deps = False
-
-class _TaskContext:
-    def __init__(self) -> None:
-        self.in_task = False
-        self.resolving_deps = False
-
-_task_context = _TaskContext()
-
-@contextmanager
-def task_context() -> Iterator[None]:
-    """Context manager for task execution."""
-    old_in_task = getattr(_task_context, 'in_task', False)
-    _task_context.in_task = True
-    try:
-        yield
-    finally:
-        _task_context.in_task = old_in_task
-
-@contextmanager
-def _dependency_resolution_context() -> Iterator[None]:
-    """Context manager for dependency resolution."""
-    old_resolving_deps = getattr(_task_context, 'resolving_deps', False)
-    _task_context.resolving_deps = True
-    try:
-        yield
-    finally:
-        _task_context.resolving_deps = old_resolving_deps
 
 @dataclass
 class TaskState:
     """Mutable state for a task."""
     status: TaskStatus = TaskStatus.PENDING
     exception: Exception | None = None
-    output: Optional['LazyOutput'] = None
+    output: LazyOutput | None = None
     signature: int = 0  # Task signature for caching and identification
 
 @dataclass(frozen=True)
@@ -240,15 +203,13 @@ class Task:
                 )
             # Otherwise, use the default value
 
-        task = cls(
+        return cls(
             name=name, 
             func=func, 
             args=args, 
             kwargs=kwargs or {}, 
             task_version=task_version
         )
-        
-        return task
 
     def resolve(self) -> Any:  # noqa: ANN401
         """Resolve this task by executing it and its dependencies."""
@@ -275,7 +236,7 @@ class Task:
             resolved_args = []
             resolved_kwargs = {}
             
-            with _dependency_resolution_context():
+            with enter_resolution_phase():
                 # Try to resolve each argument
                 for arg in self.args:
                     try:
@@ -303,7 +264,7 @@ class Task:
                         resolved_kwargs[key] = None  # Allow the task to handle the error
 
             # Execute the task function with the task's captured context
-            with task_context(), self.context:
+            with enter_exec_phase(), self.context:
                 result = self.func(*resolved_args, **resolved_kwargs)
 
             # Update status and output
@@ -327,23 +288,4 @@ class Task:
 
             raise
 
-@dataclass
-class LazyOutput(Generic[T]):
-    """A lazy output that will be computed when needed."""
-    owner: Task
-    value: T | None = None
-    _exists: bool = False
-
-    def exists(self) -> bool:
-        """Return whether this output has been computed."""
-        return self._exists
-
-    def resolve(self) -> T:
-        """Resolve this output by executing its owner task."""
-        if _task_context.in_task:
-            raise RuntimeError("resolve() cannot be called inside a task")
-        return self.owner.resolve()
-
-    def __call__(self) -> T:
-        """Allow LazyOutput to be called like a function."""
-        return self.resolve() 
+            raise
