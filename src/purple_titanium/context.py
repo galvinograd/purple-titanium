@@ -6,7 +6,9 @@ from types import MappingProxyType
 from typing import Any, Optional
 
 # Default context settings
-DEFAULT_CONTEXT_SETTINGS = MappingProxyType({})
+DEFAULT_CONTEXT_SETTINGS = MappingProxyType({
+    '_pt_persistence': None,
+})
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,7 @@ class Context:
     
     def __len__(self) -> int:
         """Get the number of settings in the context."""
-        return len(self._settings)
+        return len([s for s in self._settings if not s.startswith('_pt_')])
     
     def __getattr__(self, name: str) -> Any:  # noqa: ANN401
         """Get a setting value, falling back to parent context if not found."""

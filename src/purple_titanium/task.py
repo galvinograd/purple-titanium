@@ -22,11 +22,16 @@ class Task:
     parameters: TaskParameters = field(default_factory=TaskParameters.empty)
     context: Context = field(default_factory=get_current_context)
     task_version: int = 1
+    persist: bool = False
     _state: TaskState = field(default_factory=TaskState)
 
     def __post_init__(self) -> None:
         """Initialize the output after the task is created."""
-        self._state.output = LazyOutput(owner=self)
+        persistence = getattr(self.context, '_pt_persistence', None)
+        self._state.output = LazyOutput(
+            owner=self,
+            persistence=persistence,
+        )
         self._state.signature = self._calculate_signature()
 
     def _calculate_signature(self) -> int:

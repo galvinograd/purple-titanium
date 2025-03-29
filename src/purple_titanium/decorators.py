@@ -1,42 +1,37 @@
 """Decorators for the pipeline framework."""
 from collections.abc import Callable
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 from .events import Event, EventType
 from .events import listen as register_listener
 from .lazy_output import LazyOutput
 from .task import Task
 from .task_factory import TaskFactory
+from .types import EventType
 
 T = TypeVar('T')
 
-def task(task_version: int | None = None) -> Callable[[Callable[..., T]], Callable[..., LazyOutput[T]]]:
+def task(
+    name: Optional[str] = None,
+    task_version: Optional[int] = None,
+    persist: bool = False,
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Decorator to create a task from a function.
     
-    This decorator wraps a function to create a task that can be executed as part of a pipeline.
-    The decorated function can be called with arguments, and it will return a LazyOutput that
-    can be resolved to get the actual result.
-    
     Args:
-        task_version: Optional version number for the task. When changed, it will create a new
-                     signature for the task, useful for invalidating cached results.
+        name: Optional name for the task. If not provided, uses the function name.
+        version: Optional version number for the task. Used for cache invalidation.
+        persist: Whether to persist task outputs. Requires a persistence backend
+                to be configured in the context.
     
-    Example:
-        @task()
-        def add(a: int, b: int) -> int:
-            return a + b
-            
-        result = add(1, 2)
-        value = result.resolve()  # returns 3
-        
-        @task(task_version=2)
-        def add_v2(a: int, b: int) -> int:
-            return a + b  # Same logic, different version
+    Returns:
+        A decorated function that creates and resolves a task when called.
+    
+    Raises:
+        RuntimeError: If persist=True but no persistence backend is configured.
     """
-    def decorator(func: Callable[..., T]) -> Callable[..., LazyOutput[T]]:
-        """Create a task from a function."""
-        
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> LazyOutput[T]:
             """Create a task with the given arguments."""
@@ -45,10 +40,12 @@ def task(task_version: int | None = None) -> Callable[[Callable[..., T]], Callab
                 func=func, 
                 args=args, 
                 kwargs=kwargs, 
-                task_version=task_version
+                task_version=task_version,
+                persist=persist,
             ).output
         
         return wrapper
+    
     return decorator
 
 def listen(event_type: EventType) -> Callable[[Callable[[Event], Any]], Callable[[Event], Any]]:

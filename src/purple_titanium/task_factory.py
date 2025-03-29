@@ -69,6 +69,7 @@ class TaskFactory:
         args: tuple = (),
         kwargs: dict = None,
         task_version: int = 1,
+        persist: bool = False,
         context: Context = None
     ) -> 'Task':
         """Create a new task with processed parameters."""
@@ -86,5 +87,6 @@ class TaskFactory:
             func=func,
             parameters=parameters,
             context=context,
-            task_version=task_version
+            task_version=task_version,
+            persist=persist,
         ) 
