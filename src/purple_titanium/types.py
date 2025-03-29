@@ -1,9 +1,7 @@
 """Type definitions for purple-titanium."""
 
 from enum import Enum, auto
-from typing import TypeVar
 
-T = TypeVar('T')
 
 class TaskStatus(Enum):
     """Status of a task."""
