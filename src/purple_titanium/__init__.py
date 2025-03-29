@@ -2,9 +2,10 @@
 
 from .annotations import Ignored, Injected
 from .context import Context, get_current_context
-from .core import LazyOutput, Task
 from .decorators import listen, task
 from .events import Event, emit
+from .lazy_output import LazyOutput
+from .task import Task
 from .types import EventType, TaskStatus
 
 __all__ = [

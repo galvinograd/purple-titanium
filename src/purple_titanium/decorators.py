@@ -3,9 +3,10 @@ from collections.abc import Callable
 from functools import wraps
 from typing import Any, TypeVar
 
-from .core import LazyOutput, Task
 from .events import Event, EventType
 from .events import listen as register_listener
+from .lazy_output import LazyOutput
+from .task import Task
 
 T = TypeVar('T')
 
