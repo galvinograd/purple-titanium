@@ -67,7 +67,7 @@ def test_task_context_with_dependencies() -> None:
 def test_task_context_with_injectable() -> None:
     """Test context injection with Injectable parameters."""
     @pt.task()
-    def process_data(data: int, multiplier: pt.Injectable[int]) -> int:
+    def process_data(data: int, multiplier: pt.Injected[int]) -> int:
         return data * multiplier
     
     # Create task in multiplier=3 context

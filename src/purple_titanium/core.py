@@ -4,10 +4,11 @@ import hashlib
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from inspect import signature
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, get_type_hints
 
+from .annotations import Ignorable, Injectable
 from .context import Context, get_current_context
 from .events import Event, emit
 from .types import EventType, TaskStatus
@@ -82,7 +83,25 @@ class Task:
         func_sig = signature(self.func)
         bound_args = func_sig.bind(*self.args, **self.kwargs)
         bound_args.apply_defaults()
-        return dict(bound_args.arguments)
+        
+        # Get type hints to check for ignored parameters
+        type_hints = get_type_hints(self.func, include_extras=True)
+        
+        # Filter out ignored parameters
+        filtered_params = {}
+        for name, value in bound_args.arguments.items():
+            if name in type_hints:
+                hint = type_hints[name]
+                if hasattr(hint, "__metadata__"):
+                    # Check if any metadata is Ignorable
+                    if not any(isinstance(meta, Ignorable) for meta in hint.__metadata__):
+                        filtered_params[name] = value
+                else:
+                    filtered_params[name] = value
+            else:
+                filtered_params[name] = value
+            
+        return filtered_params
 
     def _calculate_signature(self) -> int:
         """Calculate a deterministic hash signature for this task."""
@@ -120,6 +139,21 @@ class Task:
                 (self._hash_value(key), self._hash_value(val))
                 for key, val in sorted(value.items())
             ))
+        if is_dataclass(value):
+            # For dataclasses, get their type hints and filter out ignored fields
+            type_hints = get_type_hints(type(value), include_extras=True)
+            fields = {}
+            for field_name, field_value in value.__dict__.items():
+                if field_name in type_hints:
+                    hint = type_hints[field_name]
+                    if hasattr(hint, "__metadata__"):
+                        if not any(isinstance(meta, Ignorable) for meta in hint.__metadata__):
+                            fields[field_name] = self._hash_value(field_value)
+                    else:
+                        fields[field_name] = self._hash_value(field_value)
+                else:
+                    fields[field_name] = self._hash_value(field_value)
+            return ('dataclass', type(value).__name__, tuple(sorted(fields.items())))
         # For basic types, use their string representation
         return (type(value).__name__, str(value))
 
@@ -157,7 +191,7 @@ class Task:
     @classmethod
     def create(
         cls, 
-        name: str, 
+        name: str,
         func: Callable, 
         args: tuple = (), 
         kwargs: dict = None, 
@@ -165,8 +199,58 @@ class Task:
         task_version: int = 1
     ) -> 'Task':
         """Create a new task with the given parameters."""
-        task = cls(name, func, args, kwargs or {}, task_version=task_version)
-        task._state.dependencies = dependencies or set()
+        type_hints = get_type_hints(func, include_extras=True)
+        
+        kwargs = kwargs or {}
+        
+        # Get the function's signature
+        sig = signature(func)
+        
+        # Get the current context
+        ctx = get_current_context()
+        
+        # Check for injectable parameters
+        for p_name, p_val in sig.parameters.items():
+            if p_name in kwargs:
+                continue
+            
+            hint = type_hints.get(p_name)
+            
+            if not hasattr(hint, "__metadata__"):
+                continue
+                
+            if not any(isinstance(meta, Injectable) for meta in hint.__metadata__):
+                continue
+            
+            # Parameter is injectable
+            if hasattr(ctx, p_name):
+                # Context has the value, use it
+                kwargs[p_name] = getattr(ctx, p_name)
+            elif p_val.default is p_val.empty:
+                # No default value and not in context
+                raise ValueError(
+                    f"Required injectable parameter '{p_name}' not found in context"
+                )
+            # Otherwise, use the default value
+        
+        # Find dependencies in args and kwargs
+        dependencies = set()
+        for arg in args:
+            if isinstance(arg, LazyOutput):
+                dependencies.add(arg.owner)
+        for arg in kwargs.values():
+            if isinstance(arg, LazyOutput):
+                dependencies.add(arg.owner)
+        
+        task = cls(
+            name=name, 
+            func=func, 
+            args=args, 
+            kwargs=kwargs or {}, 
+            task_version=task_version
+        )
+        task._state.dependencies = dependencies
+        
         return task
 
     def resolve(self) -> Any:  # noqa: ANN401

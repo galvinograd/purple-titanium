@@ -1,12 +1,15 @@
 """Tests for task signature functionality."""
 
+import logging
 import subprocess
 import sys
 from typing import Any
 
 import purple_titanium as pt
-from purple_titanium.types import Injectable
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def test_basic_signature() -> None:
     """Test basic task signature generation."""
@@ -60,7 +63,7 @@ def test_parameter_order_invariance() -> None:
 def test_injectable_signature() -> None:
     """Test signature generation with injectable parameters."""
     @pt.task()
-    def process(data: list, config: Injectable[dict[str, Any]]) -> list:
+    def process(data: list, config: pt.Injected[dict[str, Any]]) -> list:
         return [x * config['multiplier'] for x in data]
 
     with pt.Context(config={'multiplier': 2}):
@@ -272,3 +275,133 @@ def test_cross_process_signature() -> None:
     assert sig1 != sig3, (
         "Signatures should differ for different parameters"
     )
+
+def test_ignored_signature() -> None:
+    """Test that ignored parameters don't affect the task signature."""
+    @pt.task()
+    def process_with_ignored(
+        data: list, 
+        multiplier: int, 
+        debug_mode: pt.Ignored[bool] = False
+    ) -> list:
+        if debug_mode:
+            logger.info(f"Processing data with multiplier {multiplier}")
+        return [x * multiplier for x in data]
+    
+    # Create tasks with same core parameters but different ignored parameters
+    task1 = process_with_ignored([1, 2, 3], 2, debug_mode=False)
+    task2 = process_with_ignored([1, 2, 3], 2, debug_mode=True)
+    
+    # Ignored parameters should not affect the signature
+    assert task1.owner.signature == task2.owner.signature
+    
+    # Different core parameters should still result in different signatures
+    task3 = process_with_ignored([1, 2, 3], 3, debug_mode=False)
+    assert task1.owner.signature != task3.owner.signature
+    
+    # Different data should also result in different signatures
+    task4 = process_with_ignored([1, 2, 4], 2, debug_mode=True)
+    assert task1.owner.signature != task4.owner.signature
+
+def test_mixed_annotations_signature() -> None:
+    """Test signature generation with both ignored and injected parameters."""
+    @pt.task()
+    def complex_process(
+        data: list,
+        multiplier: int,
+        config: pt.Injected[dict[str, Any]] = None,
+        verbose: pt.Ignored[bool] = False
+    ) -> list:
+        if verbose:
+            logger.info(f"Using config: {config}")
+        return [x * multiplier * config.get('factor', 1) for x in data]
+    
+    # Create tasks with same core parameters but different ignored parameters
+    task1 = complex_process([1, 2, 3], 2, verbose=False)
+    task2 = complex_process([1, 2, 3], 2, verbose=True)
+    
+    # Ignored parameters should not affect the signature
+    assert task1.owner.signature == task2.owner.signature
+    
+    # Different core parameters should result in different signatures
+    task3 = complex_process([1, 2, 3], 3, verbose=False)
+    assert task1.owner.signature != task3.owner.signature
+
+def test_nested_ignored_in_dataclass() -> None:
+    """Test that ignored parameters in nested dataclasses don't affect signatures."""
+    from dataclasses import dataclass
+    
+    @dataclass
+    class ProcessingConfig:
+        factor: int
+        debug_level: pt.Ignored[int] = 0
+        verbose_output: pt.Ignored[bool] = False
+    
+    @pt.task()
+    def process_with_config(
+        data: list,
+        config: ProcessingConfig
+    ) -> list:
+        if config.verbose_output:
+            logger.info(f"Processing with factor {config.factor}, debug level {config.debug_level}")
+        return [x * config.factor for x in data]
+    
+    # Create configs with same core parameters but different ignored parameters
+    config1 = ProcessingConfig(factor=2, debug_level=0, verbose_output=False)
+    config2 = ProcessingConfig(factor=2, debug_level=3, verbose_output=True)
+    
+    # Create tasks with these configs
+    task1 = process_with_config([1, 2, 3], config1)
+    task2 = process_with_config([1, 2, 3], config2)
+    
+    # Ignored parameters in the dataclass should not affect the signature
+    assert task1.owner.signature == task2.owner.signature
+    
+    # Different core parameters in the dataclass should result in different signatures
+    config3 = ProcessingConfig(factor=3, debug_level=0, verbose_output=False)
+    task3 = process_with_config([1, 2, 3], config3)
+    assert task1.owner.signature != task3.owner.signature
+    
+    # Different input data should still result in different signatures
+    task4 = process_with_config([1, 2, 4], config1)
+    assert task1.owner.signature != task4.owner.signature
+
+
+def test_nested_ignored_in_dataclass_2() -> None:
+    """Test that ignored parameters in nested dataclasses don't affect signatures."""
+    from dataclasses import dataclass
+    
+    @dataclass
+    class NestedConfig:
+        factor: int
+        debug_level: pt.Ignored[int] = 0
+        verbose_output: pt.Ignored[bool] = False
+    
+    @dataclass
+    class OuterConfig:
+        inner: NestedConfig
+    
+    @pt.task()
+    def process_with_outer_config(
+        data: list,
+        config: OuterConfig
+    ) -> list:
+        if config.inner.verbose_output:
+            logger.info(f"Processing with factor {config.inner.factor}, debug level {config.inner.debug_level}")
+        return [x * config.inner.factor for x in data]
+    
+    # Create configs with same core parameters but different ignored parameters
+    config1 = OuterConfig(inner=NestedConfig(factor=2, debug_level=0, verbose_output=False))
+    config2 = OuterConfig(inner=NestedConfig(factor=2, debug_level=3, verbose_output=True))
+
+    # Create tasks with these configs
+    task1 = process_with_outer_config([1, 2, 3], config1)
+    task2 = process_with_outer_config([1, 2, 3], config2)
+    
+    # Ignored parameters in the nested dataclass should not affect the signature
+    assert task1.owner.signature == task2.owner.signature
+    
+    # Different core parameters in the nested dataclass should result in different signatures
+    config3 = OuterConfig(inner=NestedConfig(factor=3, debug_level=0, verbose_output=False))
+    task3 = process_with_outer_config([1, 2, 3], config3)
+    assert task1.owner.signature != task3.owner.signature

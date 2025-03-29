@@ -1,20 +1,9 @@
 """Type definitions for purple-titanium."""
 
 from enum import Enum, auto
-from typing import Generic, TypeVar
+from typing import TypeVar
 
-
-class EventType(Enum):
-    """Event types for task execution."""
-    ROOT_STARTED = auto()
-    ROOT_FINISHED = auto()
-    ROOT_FAILED = auto()
-    TASK_STARTED = auto()
-    TASK_FINISHED = auto()
-    TASK_FAILED = auto()
-    TASK_DEP_FAILED = auto()
-    INTERNAL_ERROR = auto()
-
+T = TypeVar('T')
 
 class TaskStatus(Enum):
     """Status of a task."""
@@ -24,21 +13,12 @@ class TaskStatus(Enum):
     FAILED = auto()
     DEP_FAILED = auto()
 
-
-T = TypeVar('T')
-
-
-class Injectable(Generic[T]):
-    """Type hint for injectable parameters."""
-    
-    def __init__(self, type_: type[T]) -> None:
-        """Initialize the injectable type."""
-        self.type = type_
-    
-    def __class_getitem__(cls, item: type[T]) -> 'Injectable[T]':
-        """Create an Injectable type with the given type parameter."""
-        return cls(item)
-    
-    def __repr__(self) -> str:
-        """Return a string representation of the injectable type."""
-        return f"Injectable[{self.type.__name__}]" 
+class EventType(Enum):
+    """Types of events that can occur during task execution."""
+    TASK_STARTED = auto()
+    TASK_FINISHED = auto()
+    TASK_FAILED = auto()
+    TASK_DEP_FAILED = auto()
+    ROOT_STARTED = auto()
+    ROOT_FINISHED = auto()
+    ROOT_FAILED = auto()
