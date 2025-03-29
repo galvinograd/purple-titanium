@@ -22,88 +22,128 @@ class TaskState:
     output: LazyOutput | None = None
     signature: int = 0  # Task signature for caching and identification
 
+
 @dataclass(frozen=True)
-class Task:
-    """A task that can be executed."""
-    name: str
-    func: Callable
-    args: tuple = field(default_factory=tuple)
-    kwargs: dict = field(default_factory=dict)
-    _state: TaskState = field(default_factory=TaskState)
-    context: Context = field(default_factory=get_current_context)
-    task_version: int = 1
+class TaskParameters:
+    """Represents the parameters of a task."""
+    values: dict[str, Any] = field(default_factory=dict)
+    
+    def get_dependencies(self) -> set['Task']:
+        """Get all task dependencies from parameters."""
+        dependencies = set()
+        for value in self.values.values():
+            if isinstance(value, LazyOutput):
+                dependencies.add(value.owner)
+        return dependencies
 
-    def __post_init__(self) -> None:
-        """Initialize the output after the task is created."""
-        if getattr(_task_context, 'in_task', False):
-            raise RuntimeError("task() cannot be called inside a task")
-        self._state.output = LazyOutput(owner=self)
-        # Calculate signature during initialization
-        self._state.signature = self._calculate_signature()
+    @classmethod
+    def empty(cls) -> 'TaskParameters':
+        """Create an empty TaskParameters instance."""
+        return cls()
 
-    def _build_parameter_dict(self) -> dict[str, Any]:
-        """Convert args and kwargs into a single parameter dictionary using parameter names."""
-        func_sig = signature(self.func)
-        bound_args = func_sig.bind(*self.args, **self.kwargs)
+
+class TaskFactory:
+    """Creates tasks with properly processed parameters."""
+    
+    @staticmethod
+    def _process_parameters(
+        func: Callable,
+        args: tuple,
+        kwargs: dict,
+        context: Context
+    ) -> TaskParameters:
+        """Process args and kwargs into TaskParameters."""
+        # Get type hints for parameter processing
+        type_hints = get_type_hints(func, include_extras=True)
+        func_sig = signature(func)
+        
+        # Pre-process injectable parameters
+        processed_kwargs = kwargs.copy() if kwargs else {}
+        for name, param in func_sig.parameters.items():
+            if name not in processed_kwargs:
+                hint = type_hints.get(name)
+                if hint and hasattr(hint, "__metadata__"):
+                    if any(isinstance(meta, Injectable) for meta in hint.__metadata__):
+                        if hasattr(context, name):
+                            processed_kwargs[name] = getattr(context, name)
+                        elif param.default is param.empty:
+                            raise ValueError(f"Required injectable parameter '{name}' not found in context")
+                        else:
+                            processed_kwargs[name] = param.default
+        
+        # Bind args and kwargs to parameter names
+        bound_args = func_sig.bind(*args, **processed_kwargs)
         bound_args.apply_defaults()
         
-        # Get type hints to check for ignored parameters
-        type_hints = get_type_hints(self.func, include_extras=True)
-        
-        # Filter out ignored parameters
+        # Process parameters
         filtered_params = {}
         for name, value in bound_args.arguments.items():
             if name in type_hints:
                 hint = type_hints[name]
                 if hasattr(hint, "__metadata__"):
-                    # Check if any metadata is Ignorable
                     if not any(isinstance(meta, Ignorable) for meta in hint.__metadata__):
                         filtered_params[name] = value
                 else:
                     filtered_params[name] = value
             else:
                 filtered_params[name] = value
+                
+        return TaskParameters(values=filtered_params)
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        func: Callable,
+        args: tuple = (),
+        kwargs: dict = None,
+        task_version: int = 1,
+        context: Context = None
+    ) -> 'Task':
+        """Create a new task with processed parameters."""
+        if getattr(_task_context, 'in_task', False):
+            raise RuntimeError("task() cannot be called inside a task")
             
-        return filtered_params
-
-    def _calculate_signature(self) -> int:
-        """Calculate a deterministic hash signature for this task."""
-        # Create a tuple of all components to hash
-        components = (
-            self.name,  # Task name
-            self.task_version,  # Version
-            self._hash_parameters(self._build_parameter_dict())  # Parameters
+        context = context or get_current_context()
+        kwargs = kwargs or {}
+        
+        parameters = cls._process_parameters(func, args, kwargs, context)
+        
+        return Task(
+            name=name,
+            func=func,
+            parameters=parameters,
+            context=context,
+            task_version=task_version
         )
-        # Use sha256 for secure hashing
-        components_str = str(components).encode('utf-8')
-        return int(hashlib.sha256(components_str).hexdigest(), 16) % (10**10)
 
-    def _hash_parameters(self, parameters: dict[str, Any]) -> tuple:
+
+class TaskSignature:
+    """Handles task signature calculation and parameter hashing."""
+    
+    @staticmethod
+    def _hash_parameters(parameters: TaskParameters) -> tuple:
         """Convert parameters into a hashable tuple."""
-        # Sort by parameter name for deterministic ordering
         return tuple(
-            (name, self._hash_value(value))
-            for name, value in sorted(parameters.items())
+            (name, TaskSignature._hash_value(value))
+            for name, value in sorted(parameters.values.items())
         )
 
-    def _hash_value(self, value: Any) -> Any:  # noqa: ANN401
+    @staticmethod
+    def _hash_value(value: Any) -> Any:  # noqa: ANN401
         """Convert a value into a hashable form."""
         if isinstance(value, str):
             return value
         if isinstance(value, LazyOutput):
-            # For nested tasks, use their signature
             return value.owner.signature
         if isinstance(value, (list | tuple)):
-            # Convert sequence to tuple of hashed items
-            return (type(value).__name__, len(value), tuple(self._hash_value(item) for item in value))
+            return (type(value).__name__, len(value), tuple(TaskSignature._hash_value(item) for item in value))
         if isinstance(value, dict):
-            # Convert dict to tuple of sorted key-value pairs
             return ('dict', tuple(
-                (self._hash_value(key), self._hash_value(val))
+                (TaskSignature._hash_value(key), TaskSignature._hash_value(val))
                 for key, val in sorted(value.items())
             ))
         if is_dataclass(value):
-            # For dataclasses, get their type hints and filter out ignored fields
             type_hints = get_type_hints(type(value), include_extras=True)
             fields = {}
             for field_name, field_value in value.__dict__.items():
@@ -111,14 +151,91 @@ class Task:
                     hint = type_hints[field_name]
                     if hasattr(hint, "__metadata__"):
                         if not any(isinstance(meta, Ignorable) for meta in hint.__metadata__):
-                            fields[field_name] = self._hash_value(field_value)
+                            fields[field_name] = TaskSignature._hash_value(field_value)
                     else:
-                        fields[field_name] = self._hash_value(field_value)
+                        fields[field_name] = TaskSignature._hash_value(field_value)
                 else:
-                    fields[field_name] = self._hash_value(field_value)
+                    fields[field_name] = TaskSignature._hash_value(field_value)
             return ('dataclass', type(value).__name__, tuple(sorted(fields.items())))
-        # For basic types, use their string representation
         return (type(value).__name__, str(value))
+
+    @staticmethod
+    def calculate(name: str, version: int, parameters: TaskParameters) -> int:
+        """Calculate a deterministic hash signature for a task."""
+        components = (name, version, TaskSignature._hash_parameters(parameters))
+        components_str = str(components).encode('utf-8')
+        return int(hashlib.sha256(components_str).hexdigest(), 16) % (10**10)
+
+
+class TaskExecutor:
+    """Handles task execution and dependency resolution."""
+    
+    @staticmethod
+    def resolve_dependencies(task: 'Task', parameters: TaskParameters) -> dict[str, Any]:
+        """Resolve task dependencies."""
+        resolved_params = {}
+        
+        with enter_resolution_phase():
+            for name, value in parameters.values.items():
+                try:
+                    resolved_params[name] = value.resolve() if isinstance(value, LazyOutput) else value
+                except Exception as e:
+                    if not _task_context.in_task:
+                        task._state.status = TaskStatus.DEP_FAILED
+                        task._state.exception = e
+                        emit(Event(EventType.TASK_DEP_FAILED, task))
+                        raise
+                    resolved_params[name] = None
+                    
+        return resolved_params
+
+    @staticmethod
+    def execute_task(task: 'Task', resolved_params: dict[str, Any]) -> Any:  # noqa: ANN401
+        """Execute the task function with the given parameters."""
+        with enter_exec_phase(), task.context:
+            return task.func(**resolved_params)
+
+
+@dataclass(frozen=True)
+class Task:
+    """A task that can be executed."""
+    name: str
+    func: Callable
+    parameters: TaskParameters = field(default_factory=TaskParameters.empty)
+    context: Context = field(default_factory=get_current_context)
+    task_version: int = 1
+    _state: TaskState = field(default_factory=TaskState)
+
+    def __post_init__(self) -> None:
+        """Initialize the output after the task is created."""
+        self._state.output = LazyOutput(owner=self)
+        self._state.signature = self._calculate_signature()
+
+    @classmethod
+    def create(
+        cls,
+        name: str,
+        func: Callable,
+        args: tuple = (),
+        kwargs: dict = None,
+        task_version: int = 1
+    ) -> 'Task':
+        """Create a new task with the given parameters (for backward compatibility)."""
+        return TaskFactory.create(
+            name=name,
+            func=func,
+            args=args,
+            kwargs=kwargs,
+            task_version=task_version
+        )
+
+    def _calculate_signature(self) -> int:
+        """Calculate a deterministic hash signature for this task."""
+        return TaskSignature.calculate(
+            self.name,
+            self.task_version,
+            self.parameters
+        )
 
     @property
     def signature(self) -> int:
@@ -126,14 +243,14 @@ class Task:
         return self._state.signature
 
     def __hash__(self) -> int:
-        """Return a hash based on the task's name and function."""
+        """Return a hash based on the task's signature."""
         return self._state.signature
 
     def __eq__(self, other: object) -> bool:
-        """Compare tasks based on their name and function."""
+        """Compare tasks based on their signature."""
         if not isinstance(other, Task):
             return False
-        return self.name == other.name and self.func == other.func
+        return self.signature == other.signature
 
     @property
     def status(self) -> TaskStatus:
@@ -149,67 +266,7 @@ class Task:
 
     @property
     def dependencies(self) -> set['Task']:
-        # Find dependencies in args and kwargs
-        dependencies = set()
-        for arg in self.args:
-            if isinstance(arg, LazyOutput):
-                dependencies.add(arg.owner)
-        for arg in self.kwargs.values():
-            if isinstance(arg, LazyOutput):
-                dependencies.add(arg.owner)
-        return dependencies
-
-    @classmethod
-    def create(
-        cls, 
-        name: str,
-        func: Callable, 
-        args: tuple = (), 
-        kwargs: dict = None, 
-        task_version: int = 1
-    ) -> 'Task':
-        """Create a new task with the given parameters."""
-        type_hints = get_type_hints(func, include_extras=True)
-        
-        kwargs = kwargs or {}
-        
-        # Get the function's signature
-        sig = signature(func)
-        
-        # Get the current context
-        ctx = get_current_context()
-        
-        # Check for injectable parameters
-        for p_name, p_val in sig.parameters.items():
-            if p_name in kwargs:
-                continue
-            
-            hint = type_hints.get(p_name)
-            
-            if not hasattr(hint, "__metadata__"):
-                continue
-                
-            if not any(isinstance(meta, Injectable) for meta in hint.__metadata__):
-                continue
-            
-            # Parameter is injectable
-            if hasattr(ctx, p_name):
-                # Context has the value, use it
-                kwargs[p_name] = getattr(ctx, p_name)
-            elif p_val.default is p_val.empty:
-                # No default value and not in context
-                raise ValueError(
-                    f"Required injectable parameter '{p_name}' not found in context"
-                )
-            # Otherwise, use the default value
-
-        return cls(
-            name=name, 
-            func=func, 
-            args=args, 
-            kwargs=kwargs or {}, 
-            task_version=task_version
-        )
+        return self.parameters.get_dependencies()
 
     def resolve(self) -> Any:  # noqa: ANN401
         """Resolve this task by executing it and its dependencies."""
@@ -223,51 +280,16 @@ class Task:
             raise RuntimeError(f"Task {self.name} failed due to dependency failure")
 
         try:
-            # Check if this is a root task (not being resolved as a dependency)
             is_root = not _task_context.resolving_deps
 
-            # Update status and emit events
             self._state.status = TaskStatus.RUNNING
             if is_root:
                 emit(Event(EventType.ROOT_STARTED, self))
             emit(Event(EventType.TASK_STARTED, self))
 
-            # Resolve dependencies first
-            resolved_args = []
-            resolved_kwargs = {}
-            
-            with enter_resolution_phase():
-                # Try to resolve each argument
-                for arg in self.args:
-                    try:
-                        resolved_args.append(arg.resolve() if isinstance(arg, LazyOutput) else arg)
-                    except Exception as e:
-                        if not _task_context.in_task:
-                            # Only propagate errors if we're not in a task
-                            self._state.status = TaskStatus.DEP_FAILED
-                            self._state.exception = e
-                            emit(Event(EventType.TASK_DEP_FAILED, self))
-                            raise
-                        resolved_args.append(None)  # Allow the task to handle the error
-                
-                # Try to resolve each kwarg
-                for key, value in self.kwargs.items():
-                    try:
-                        resolved_kwargs[key] = value.resolve() if isinstance(value, LazyOutput) else value
-                    except Exception as e:
-                        if not _task_context.in_task:
-                            # Only propagate errors if we're not in a task
-                            self._state.status = TaskStatus.DEP_FAILED
-                            self._state.exception = e
-                            emit(Event(EventType.TASK_DEP_FAILED, self))
-                            raise
-                        resolved_kwargs[key] = None  # Allow the task to handle the error
+            resolved_params = TaskExecutor.resolve_dependencies(self, self.parameters)
+            result = TaskExecutor.execute_task(self, resolved_params)
 
-            # Execute the task function with the task's captured context
-            with enter_exec_phase(), self.context:
-                result = self.func(*resolved_args, **resolved_kwargs)
-
-            # Update status and output
             self._state.status = TaskStatus.COMPLETED
             self.output.value = result
             self.output._exists = True
@@ -278,14 +300,11 @@ class Task:
             return result
 
         except Exception as e:
-            # Update status and emit events
             if self._state.status not in (TaskStatus.DEP_FAILED, TaskStatus.FAILED):
                 self._state.status = TaskStatus.FAILED
                 self._state.exception = e
                 emit(Event(EventType.TASK_FAILED, self))
                 if not _task_context.resolving_deps:
                     emit(Event(EventType.ROOT_FAILED, self))
-
-            raise
 
             raise
