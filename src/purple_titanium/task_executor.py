@@ -23,7 +23,16 @@ class TaskExecutor:
         with enter_resolution_phase():
             for name, value in parameters.values.items():
                 try:
-                    resolved_params[name] = value.resolve() if isinstance(value, LazyOutput) else value
+                    if isinstance(value, LazyOutput):
+                        resolved_params[name] = value.resolve()
+                    elif isinstance(value, dict):
+                        resolved_params[name] = {k: v.resolve() if isinstance(v, LazyOutput) else v for k, v in value.items()}
+                    elif isinstance(value, list):
+                        resolved_params[name] = [v.resolve() if isinstance(v, LazyOutput) else v for v in value]
+                    elif isinstance(value, tuple):
+                        resolved_params[name] = tuple(v.resolve() if isinstance(v, LazyOutput) else v for v in value)
+                    else:
+                        resolved_params[name] = value
                 except Exception as e:
                     if not _task_context.in_task:
                         task._state.status = TaskStatus.DEP_FAILED
